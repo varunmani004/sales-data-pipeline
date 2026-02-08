@@ -14,7 +14,7 @@ st.set_page_config(
 # -----------------------------
 @st.cache_data
 def load_data():
-    df = pd.read_csv("data/sales_data_cleaned.csv")
+    df = pd.read_csv("data/processed/sales_data_cleaned.csv")
 
     # Type conversions
     df["order_date"] = pd.to_datetime(df["order_date"])
