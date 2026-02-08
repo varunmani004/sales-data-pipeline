@@ -1,65 +1,53 @@
 import streamlit as st
 import pandas as pd
-from sqlalchemy import create_engine
 
-# -------------------------------
-# PAGE CONFIG
-# -------------------------------
+# -----------------------------
+# Page Config
+# -----------------------------
 st.set_page_config(
-    page_title="Sales Dashboard",
-    page_icon="📊",
-    layout="wide"
+    page_title="Sales Data Dashboard",
+    layout="wide",
 )
 
-st.title("📊 Sales Data Dashboard")
-
-# -------------------------------
-# DATABASE CONNECTION
-# -------------------------------
-@st.cache_resource
-def get_engine():
-    engine = create_engine(
-        "mysql+pymysql://sales_user:sales123@localhost:3306/sales_pipeline"
-    )
-    return engine
-
-# -------------------------------
-# LOAD DATA
-# -------------------------------
+# -----------------------------
+# Load Data
+# -----------------------------
 @st.cache_data
 def load_data():
-    query = "SELECT * FROM sales_data"
-    engine = get_engine()
-    df = pd.read_sql(query, engine)
-    return df
+    df = pd.read_csv("data/sales_data_cleaned.csv")
+
+    # Type conversions
+    df["order_date"] = pd.to_datetime(df["order_date"])
+    df["quantity_ordered"] = pd.to_numeric(df["quantity_ordered"], errors="coerce")
+    df["price_each"] = pd.to_numeric(df["price_each"], errors="coerce")
+
+    # Derived columns
+    df["sales"] = df["quantity_ordered"] * df["price_each"]
+    df["month"] = df["order_date"].dt.to_period("M").astype(str)
+
+    return df.dropna()
 
 df = load_data()
 
-# -------------------------------
-# DATA CLEANING
-# -------------------------------
-df["quantity_ordered"] = pd.to_numeric(df["quantity_ordered"], errors="coerce")
-df["price_each"] = pd.to_numeric(df["price_each"], errors="coerce")
-df["order_date"] = pd.to_datetime(df["order_date"], errors="coerce")
+# -----------------------------
+# Title
+# -----------------------------
+st.title("📊 Sales Data Analytics Dashboard")
+st.caption("End-to-End Data Pipeline | CSV → Python → Streamlit")
 
-df.dropna(inplace=True)
-
-df["sales"] = df["quantity_ordered"] * df["price_each"]
-df["month"] = df["order_date"].dt.to_period("M").astype(str)
-
-# -------------------------------
-# SIDEBAR FILTERS
-# -------------------------------
-st.sidebar.header("🔍 Filters")
+# -----------------------------
+# Sidebar Filters
+# -----------------------------
+st.sidebar.header("🔎 Filters")
 
 product_filter = st.sidebar.multiselect(
-    "Select Product(s)",
+    "Select Product",
     options=sorted(df["product"].unique()),
-    default=sorted(df["product"].unique())[:5]
+    default=sorted(df["product"].unique())
 )
 
 month_filter = st.sidebar.multiselect(
-    "Select Month(s)",
+    "Select Month",
     options=sorted(df["month"].unique()),
     default=sorted(df["month"].unique())
 )
@@ -69,24 +57,23 @@ filtered_df = df[
     (df["month"].isin(month_filter))
 ]
 
-# -------------------------------
-# KPI METRICS
-# -------------------------------
+# -----------------------------
+# KPI Section
+# -----------------------------
 total_sales = filtered_df["sales"].sum()
 total_orders = filtered_df["order_id"].nunique()
 total_quantity = filtered_df["quantity_ordered"].sum()
 
 col1, col2, col3 = st.columns(3)
-
 col1.metric("💰 Total Sales", f"₹ {total_sales:,.0f}")
 col2.metric("🧾 Total Orders", total_orders)
 col3.metric("📦 Quantity Sold", int(total_quantity))
 
 st.divider()
 
-# -------------------------------
-# SALES BY MONTH
-# -------------------------------
+# -----------------------------
+# Monthly Sales Trend
+# -----------------------------
 st.subheader("📈 Monthly Sales Trend")
 
 monthly_sales = (
@@ -98,16 +85,13 @@ monthly_sales = (
 )
 
 st.line_chart(
-    monthly_sales,
-    x="month",
-    y="sales",
-    use_container_width=True
+    monthly_sales.set_index("month")
 )
 
-# -------------------------------
-# TOP PRODUCTS
-# -------------------------------
-st.subheader("🏆 Top 10 Products by Sales")
+# -----------------------------
+# Top Products
+# -----------------------------
+st.subheader("🏆 Top Products by Sales")
 
 top_products = (
     filtered_df
@@ -115,24 +99,20 @@ top_products = (
     .sum()
     .sort_values(ascending=False)
     .head(10)
+    .reset_index()
 )
 
-st.bar_chart(top_products)
-
-# -------------------------------
-# DATA PREVIEW
-# -------------------------------
-st.subheader("📄 Data Preview")
-st.dataframe(filtered_df.head(50), use_container_width=True)
-
-# -------------------------------
-# DOWNLOAD BUTTON
-# -------------------------------
-st.download_button(
-    label="⬇️ Download Filtered Data as CSV",
-    data=filtered_df.to_csv(index=False),
-    file_name="filtered_sales_data.csv",
-    mime="text/csv"
+st.bar_chart(
+    top_products.set_index("product")
 )
 
-st.success("✅ Dashboard loaded successfully")
+# -----------------------------
+# Data Preview
+# -----------------------------
+with st.expander("📄 View Raw Data"):
+    st.dataframe(filtered_df.head(100))
+
+# -----------------------------
+# Footer
+# -----------------------------
+st.caption("Built by Varun | Streamlit • Pandas • Data Engineering")
