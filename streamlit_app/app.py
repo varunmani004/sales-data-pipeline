@@ -1,27 +1,36 @@
+import os
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 
-# -----------------------------
-# Page Config
-# -----------------------------
+# ------------------ Page Config ------------------
 st.set_page_config(
-    page_title="Sales Data Dashboard",
-    layout="wide",
+    page_title="Sales Dashboard",
+    layout="wide"
 )
 
-# -----------------------------
-# Load Data
-# -----------------------------
+st.title("📊 Sales Dashboard")
+
+# ------------------ Load Data ------------------
 @st.cache_data
 def load_data():
-    df = pd.read_csv("data/processed/sales_data_cleaned.csv")
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    DATA_PATH = os.path.join(
+        BASE_DIR,
+        "..",
+        "data",
+        "processed",
+        "cleaned_sales_data.csv"
+    )
 
-    # Type conversions
+    df = pd.read_csv(DATA_PATH)
+
+    # Data types
     df["order_date"] = pd.to_datetime(df["order_date"])
     df["quantity_ordered"] = pd.to_numeric(df["quantity_ordered"], errors="coerce")
     df["price_each"] = pd.to_numeric(df["price_each"], errors="coerce")
 
-    # Derived columns
+    # Features
     df["sales"] = df["quantity_ordered"] * df["price_each"]
     df["month"] = df["order_date"].dt.to_period("M").astype(str)
 
@@ -29,90 +38,71 @@ def load_data():
 
 df = load_data()
 
-# -----------------------------
-# Title
-# -----------------------------
-st.title("📊 Sales Data Analytics Dashboard")
-st.caption("End-to-End Data Pipeline | CSV → Python → Streamlit")
+# ------------------ Sidebar Filters ------------------
+st.sidebar.header("🔍 Filters")
 
-# -----------------------------
-# Sidebar Filters
-# -----------------------------
-st.sidebar.header("🔎 Filters")
-
-product_filter = st.sidebar.multiselect(
-    "Select Product",
+products = st.sidebar.multiselect(
+    "Select Product(s)",
     options=sorted(df["product"].unique()),
-    default=sorted(df["product"].unique())
+    default=sorted(df["product"].unique())[:5]
 )
 
-month_filter = st.sidebar.multiselect(
-    "Select Month",
+months = st.sidebar.multiselect(
+    "Select Month(s)",
     options=sorted(df["month"].unique()),
     default=sorted(df["month"].unique())
 )
 
 filtered_df = df[
-    (df["product"].isin(product_filter)) &
-    (df["month"].isin(month_filter))
+    (df["product"].isin(products)) &
+    (df["month"].isin(months))
 ]
 
-# -----------------------------
-# KPI Section
-# -----------------------------
+# ------------------ KPIs ------------------
 total_sales = filtered_df["sales"].sum()
 total_orders = filtered_df["order_id"].nunique()
 total_quantity = filtered_df["quantity_ordered"].sum()
 
 col1, col2, col3 = st.columns(3)
+
 col1.metric("💰 Total Sales", f"₹ {total_sales:,.0f}")
-col2.metric("🧾 Total Orders", total_orders)
-col3.metric("📦 Quantity Sold", int(total_quantity))
+col2.metric("🧾 Total Orders", f"{total_orders:,}")
+col3.metric("📦 Quantity Sold", f"{int(total_quantity):,}")
 
 st.divider()
 
-# -----------------------------
-# Monthly Sales Trend
-# -----------------------------
-st.subheader("📈 Monthly Sales Trend")
-
+# ------------------ Monthly Trend ------------------
 monthly_sales = (
     filtered_df
-    .groupby("month")["sales"]
+    .groupby("month", as_index=False)["sales"]
     .sum()
-    .reset_index()
-    .sort_values("month")
 )
 
-st.line_chart(
-    monthly_sales.set_index("month")
+fig_trend = px.line(
+    monthly_sales,
+    x="month",
+    y="sales",
+    title="📈 Monthly Sales Trend",
+    markers=True
 )
 
-# -----------------------------
-# Top Products
-# -----------------------------
-st.subheader("🏆 Top Products by Sales")
+st.plotly_chart(fig_trend, use_container_width=True)
 
+# ------------------ Top Products ------------------
 top_products = (
     filtered_df
-    .groupby("product")["sales"]
+    .groupby("product", as_index=False)["sales"]
     .sum()
-    .sort_values(ascending=False)
+    .sort_values(by="sales", ascending=False)
     .head(10)
-    .reset_index()
 )
 
-st.bar_chart(
-    top_products.set_index("product")
+fig_products = px.bar(
+    top_products,
+    x="sales",
+    y="product",
+    orientation="h",
+    title="🏆 Top 10 Products by Sales"
 )
 
-# -----------------------------
-# Data Preview
-# -----------------------------
-with st.expander("📄 View Raw Data"):
-    st.dataframe(filtered_df.head(100))
-
-# -----------------------------
-# Footer
-# -----------------------------
-st.caption("Built by Varun | Streamlit • Pandas • Data Engineering")
+st.plotly_chart(fig_products, use_container_width=True)
